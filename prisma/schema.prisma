@@ -1,0 +1,492 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// 1. Towns - Town info, current date/time, weather, season, holidays
+model Town {
+  id            String       @id @default(cuid())
+  name          String       @default("Glendale")
+  region        String       @default("CA")
+  country       String       @default("USA")
+  currentDate   DateTime     @default(now()) @map("current_date")
+  currentTime   String       @default("08:00") @map("current_time")
+  timeSpeed     Int          @default(1) @map("time_speed") // 1 = real time, 60 = 1 min = 1 hour
+  weather       WeatherType  @default(SUNNY)
+  temperature   Int          @default(72)
+  season        Season       @default(SPRING)
+  isHoliday     Boolean      @default(false) @map("is_holiday")
+  holidayName   String?      @map("holiday_name")
+  
+  // Map center coordinates
+  currentLat    Float        @default(34.1469) @map("current_lat")
+  currentLng    Float        @default(-118.2551) @map("current_lng")
+  
+  // Relationships
+  places        Place[]
+  events        TownEvent[]
+  characters    Character[]
+  
+  createdAt     DateTime     @default(now()) @map("created_at")
+  updatedAt     DateTime     @updatedAt @map("updated_at")
+
+  @@map("towns")
+}
+
+enum WeatherType {
+  SUNNY
+  CLOUDY
+  RAINY
+  SNOWY
+  FOGGY
+  WINDY
+}
+
+enum Season {
+  SPRING
+  SUMMER
+  AUTUMN
+  WINTER
+}
+
+// 2. Places - Locations from Google Places (lat/lng, type, hours, rating)
+model Place {
+  id            String       @id @default(cuid())
+  townId        String       @map("town_id")
+  town          Town         @relation(fields: [townId], references: [id], onDelete: Cascade)
+  
+  // Google Places data
+  googlePlaceId String?      @unique @map("google_place_id")
+  name          String
+  address       String?
+  lat           Float
+  lng           Float
+  types         String[]     // Google Place types
+  
+  // Display info
+  placeType     PlaceType    @map("place_type")
+  icon          String?
+  description   String?
+  rating        Float?
+  userRatingsTotal Int?      @map("user_ratings_total")
+  
+  // Business hours (JSON format for flexibility)
+  openingHours  Json?        @map("opening_hours")
+  phoneNumber   String?      @map("phone_number")
+  website       String?
+  photoUrls     String[]     @map("photo_urls")
+  
+  // Relationships
+  homeCharacters Character[]  @relation("HomeLocation")
+  workCharacters Character[]  @relation("WorkLocation")
+  routinesFrom  CharacterRoutine[] @relation("FromLocation")
+  routinesTo    CharacterRoutine[] @relation("ToLocation")
+  
+  createdAt     DateTime     @default(now()) @map("created_at")
+  updatedAt     DateTime     @updatedAt @map("updated_at")
+
+  @@index([townId])
+  @@index([lat, lng])
+  @@index([placeType])
+  @@map("places")
+}
+
+enum PlaceType {
+  HOME
+  CAFE
+  RESTAURANT
+  SHOP
+  PARK
+  LIBRARY
+  WORK
+  TRANSPORT
+  ENTERTAINMENT
+  GYM
+  HOSPITAL
+  SCHOOL
+  OTHER
+}
+
+// 3. Characters - Core character data
+model Character {
+  id                String   @id @default(cuid())
+  townId            String   @map("town_id")
+  town              Town     @relation(fields: [townId], references: [id], onDelete: Cascade)
+  
+  // Basic info
+  name              String
+  avatar            String?
+  age               Int
+  gender            String?
+  bio               String?
+  
+  // Personality (JSON for flexible traits)
+  personality       Json     // { traits: [...], mbti: "...", bigFive: {...} }
+  
+  // Life status
+  occupation        String
+  homeLocationId    String   @map("home_location_id")
+  homeLocation      Place    @relation("HomeLocation", fields: [homeLocationId], references: [id])
+  workLocationId    String?  @map("work_location_id")
+  workLocation      Place?   @relation("WorkLocation", fields: [workLocationId], references: [id])
+  
+  // Economy
+  wealth            Int      @default(50000)
+  income            Int      @default(5000)  // Monthly
+  
+  // Lifestyle
+  lifestyle         Json     // { sleepSchedule: {...}, dietary: [...], hobbies: [...] }
+  goals             String[]
+  
+  // Current state
+  currentLocationId String?  @map("current_location_id")
+  currentStatus     CharacterStatus @default(IDLE) @map("current_status")
+  currentMood       String   @default("neutral") @map("current_mood")
+  
+  // Habits and preferences
+  habits            Json     // { morning: [...], evening: [...], weekend: [...] }
+  preferences       Json     // { food: [...], activities: [...], music: [...] }
+  
+  // Relationships
+  isUserCreated     Boolean  @default(false) @map("is_user_created")
+  isActive          Boolean  @default(true) @map("is_active")
+  
+  // Relationships
+  routines          CharacterRoutine[]
+  memories          CharacterMemory[]
+  relationshipsAsA  CharacterRelationship[] @relation("CharacterA")
+  relationshipsAsB  CharacterRelationship[] @relation("CharacterB")
+  
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  @@index([townId])
+  @@index([isUserCreated])
+  @@index([isActive])
+  @@map("characters")
+}
+
+enum CharacterStatus {
+  SLEEPING
+  IDLE
+  WORKING
+  EATING
+  TRAVELING
+  SOCIALIZING
+  EXERCISING
+  SHOPPING
+}
+
+// 4. Character Routines - Daily trajectory segments
+model CharacterRoutine {
+  id            String   @id @default(cuid())
+  characterId   String   @map("character_id")
+  character     Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  
+  date          DateTime @db.Date
+  
+  // Time segment
+  startTime     String   @map("start_time") // HH:MM format
+  endTime       String   @map("end_time")   // HH:MM format
+  
+  // Location
+  fromLocationId String  @map("from_location_id")
+  fromLocation   Place   @relation(name: "FromLocation", fields: [fromLocationId], references: [id])
+  toLocationId   String  @map("to_location_id")
+  toLocation     Place   @relation(name: "ToLocation", fields: [toLocationId], references: [id])
+  
+  // Activity details
+  actionType    RoutineActionType @map("action_type")
+  description   String
+  purpose       String   // Why they're doing this
+  mood          String   // Their mood during this activity
+  
+  // Involvement
+  companionIds  String[] @map("companion_ids") // Character IDs
+  
+  // Additional details (JSON for flexibility)
+  details       Json?    // { food: "...", cost: "...", transport: "...", etc. }
+  
+  // Generation metadata
+  isAiGenerated Boolean  @default(true) @map("is_ai_generated")
+  generatedAt   DateTime @default(now()) @map("generated_at")
+  
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@index([characterId, date])
+  @@index([date])
+  @@index([fromLocationId])
+  @@index([toLocationId])
+  @@unique([characterId, date, startTime])
+  @@map("character_routines")
+}
+
+enum RoutineActionType {
+  WAKE
+  SLEEP
+  HOME
+  TRAVEL
+  WORK
+  MEAL
+  SHOPPING
+  SOCIAL
+  EXERCISE
+  LEISURE
+  STUDY
+  ERRAND
+}
+
+// 5. Character Memories - Long-term memory system
+model CharacterMemory {
+  id            String       @id @default(cuid())
+  characterId   String       @map("character_id")
+  character     Character    @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  
+  // Memory content
+  category      MemoryCategory
+  content       String       @db.Text
+  
+  // Context
+  date          DateTime
+  locationId    String?      @map("location_id")
+  involvedCharacters String[] @map("involved_characters")
+  
+  // Importance and emotional weight
+  importance    Int          @default(5) // 1-10 scale
+  sentiment     Float?       // -1.0 to 1.0
+  emotions      String[]     // Array of emotions felt
+  
+  // Metadata
+  isLongTerm    Boolean      @default(false) @map("is_long_term") // Archived to long-term memory
+  accessCount   Int          @default(0) @map("access_count")
+  lastAccessed  DateTime?    @map("last_accessed")
+  
+  // AI summary
+  summary       String?
+  keywords      String[]
+  
+  createdAt     DateTime     @default(now()) @map("created_at")
+  updatedAt     DateTime     @updatedAt @map("updated_at")
+
+  @@index([characterId, category])
+  @@index([characterId, date])
+  @@index([isLongTerm])
+  @@map("character_memories")
+}
+
+enum MemoryCategory {
+  PEOPLE
+  PLACES
+  EVENTS
+  PREFERENCES
+  DAILY
+  MILESTONE
+  RELATIONSHIP
+  WORK
+  LEISURE
+}
+
+// 6. Character Relationships - Relationships between characters
+model CharacterRelationship {
+  id              String     @id @default(cuid())
+  
+  characterAId    String     @map("character_a_id")
+  characterA      Character  @relation("CharacterA", fields: [characterAId], references: [id], onDelete: Cascade)
+  
+  characterBId    String     @map("character_b_id")
+  characterB      Character  @relation("CharacterB", fields: [characterBId], references: [id], onDelete: Cascade)
+  
+  // Relationship details
+  relationshipType RelationshipType @map("relationship_type")
+  intimacy        Int        @default(0) // 0-100 scale
+  trust           Int        @default(50) // 0-100 scale
+  
+  // Interaction history
+  firstMetAt      DateTime?  @map("first_met_at")
+  firstMetLocation String?   @map("first_met_location")
+  lastInteractionAt DateTime? @map("last_interaction_at")
+  interactionCount Int       @default(0) @map("interaction_count")
+  
+  // Dynamics
+  status          RelationshipStatus @default(NEUTRAL)
+  history         Json?      // Array of significant events
+  sharedMemories  String[]   @map("shared_memories") // Memory IDs
+  
+  createdAt       DateTime   @default(now()) @map("created_at")
+  updatedAt       DateTime   @updatedAt @map("updated_at")
+
+  @@unique([characterAId, characterBId])
+  @@index([characterAId])
+  @@index([characterBId])
+  @@map("character_relationships")
+}
+
+enum RelationshipType {
+  FRIEND
+  COWORKER
+  FAMILY
+  ROMANTIC
+  NEIGHBOR
+  ACQUAINTANCE
+  RIVAL
+  STRANGER
+}
+
+enum RelationshipStatus {
+  HOSTILE
+  COLD
+  NEUTRAL
+  FRIENDLY
+  CLOSE
+  INTIMATE
+}
+
+// 7. User Prompts - User intervention commands and AI responses
+model UserPrompt {
+  id            String   @id @default(cuid())
+  
+  // Command info
+  characterId   String   @map("character_id")
+  promptText    String   @map("prompt_text")
+  promptType    PromptType @map("prompt_type")
+  
+  // Natural language parsing
+  parsedIntent  String?  @map("parsed_intent")
+  parsedEntities Json?   @map("parsed_entities")
+  confidence    Float?
+  
+  // AI response
+  aiResponse    String   @map("ai_response")
+  executionPlan Json?    @map("execution_plan") // Steps to execute
+  
+  // Execution status
+  status        PromptStatus @default(PENDING)
+  executedAt    DateTime? @map("executed_at")
+  executionResult Json?  @map("execution_result")
+  
+  // Effects
+  affectedRoutines String[] @map("affected_routines") // Routine IDs modified
+  
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@index([characterId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("user_prompts")
+}
+
+enum PromptType {
+  JOB_CHANGE
+  MOVE_HOME
+  TRAVEL
+  CONFESSION
+  SOCIAL
+  SCHEDULE_CHANGE
+  EMOTIONAL
+  LIFESTYLE
+  OTHER
+}
+
+enum PromptStatus {
+  PENDING
+  PARSING
+  EXECUTING
+  COMPLETED
+  FAILED
+  REJECTED
+}
+
+// 8. Town Events - Public town events (holidays, festivals, weather events)
+model TownEvent {
+  id            String   @id @default(cuid())
+  townId        String   @map("town_id")
+  town          Town     @relation(fields: [townId], references: [id], onDelete: Cascade)
+  
+  // Event details
+  name          String
+  description   String?
+  eventType     EventType @map("event_type")
+  
+  // Timing
+  startDate     DateTime @map("start_date")
+  endDate       DateTime @map("end_date")
+  isAllDay      Boolean  @default(true) @map("is_all_day")
+  startTime     String?  @map("start_time")
+  endTime       String?  @map("end_time")
+  
+  // Location
+  locationId    String?  @map("location_id")
+  affectedAreas String[] @map("affected_areas")
+  
+  // Effects
+  weatherEffect WeatherType? @map("weather_effect")
+  crowdLevel    Int?     @map("crowd_level") // 1-10
+  specialActivities String[] @map("special_activities")
+  
+  // Metadata
+  isRecurring   Boolean  @default(false) @map("is_recurring")
+  recurrencePattern String? @map("recurrence_pattern")
+  isAiGenerated Boolean  @default(false) @map("is_ai_generated")
+  
+  // Story elements
+  storyLine     String?  @map("story_line")
+  involvedCharacters String[] @map("involved_characters")
+  
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@index([townId, startDate])
+  @@index([eventType])
+  @@map("town_events")
+}
+
+enum EventType {
+  HOLIDAY
+  FESTIVAL
+  WEATHER
+  SOCIAL
+  MARKET
+  CONCERT
+  SPORTS
+  COMMUNITY
+  EMERGENCY
+  STORY
+}
+
+// Conversations between characters
+model Conversation {
+  id            String   @id @default(cuid())
+  
+  // Participants
+  characterIds  String[] @map("character_ids")
+  
+  // Context
+  locationId    String?  @map("location_id")
+  startedAt     DateTime @default(now()) @map("started_at")
+  endedAt       DateTime? @map("ended_at")
+  topic         String?
+  context       String?  // What triggered this conversation
+  
+  // Messages
+  messages      Json[]   // Array of { senderId, content, timestamp, emotion }
+  
+  // AI generation
+  isAiGenerated Boolean  @default(true) @map("is_ai_generated")
+  
+  // Effects
+  relationshipChanges Json? @map("relationship_changes")
+  
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@index([characterIds])
+  @@index([startedAt])
+  @@map("conversations")
+}
