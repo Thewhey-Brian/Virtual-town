@@ -57,6 +57,12 @@
   --color-warm-700: #b5631f;
   --color-warm-800: #924d1d;
   --color-warm-900: #75401b;
+  
+  /* Tech blue - v2.0 theme */
+  --color-tech-blue: #165DFF;
+  --color-tech-blue-light: #4080FF;
+  --color-tech-blue-dark: #0D47A1;
+  --color-accent-orange: #FF7D00;
 }
 
 :root {
