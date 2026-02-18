@@ -76,6 +76,12 @@ interface Character {
   bio: string;
   currentStatus: string;
   currentMood: string;
+  lat?: number;
+  lng?: number;
+  homeLocation?: {
+    lat: number;
+    lng: number;
+  };
 }
 
 interface Place {
@@ -739,8 +745,27 @@ function MiniMap({ places, characters }: { places: Place[]; characters: Characte
     zoom: 13,
   });
 
-  const validPlaces = places.filter(p => isValidCoord(p.lat, p.lng));
-  const validCharacters = characters.filter(c => isValidCoord((c as any).lat, (c as any).lng));
+  const validPlaces = (places || []).filter(p => isValidCoord(p?.lat, p?.lng));
+  const validCharacters = (characters || []).filter(c => {
+    const lat = c?.lat || c?.homeLocation?.lat;
+    const lng = c?.lng || c?.homeLocation?.lng;
+    return isValidCoord(lat, lng);
+  }).map(c => ({
+    ...c,
+    lat: c.lat || c.homeLocation?.lat || DEFAULT_LAT,
+    lng: c.lng || c.homeLocation?.lng || DEFAULT_LNG,
+  }));
+
+  if (!MAPBOX_TOKEN) {
+    return (
+      <div className="h-full flex items-center justify-center bg-gradient-to-br from-[#fefbf7] to-[#f9e8d0]">
+        <div className="text-center">
+          <MapPin className="w-12 h-12 text-[#e59a3d] mx-auto mb-2" />
+          <p className="text-muted-foreground">Mapbox token not configured</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="h-full w-full relative">
@@ -769,8 +794,8 @@ function MiniMap({ places, characters }: { places: Place[]; characters: Characte
         {validCharacters.slice(0, 20).map(char => (
           <Marker
             key={char.id}
-            latitude={(char as any).lat}
-            longitude={(char as any).lng}
+            latitude={char.lat}
+            longitude={char.lng}
             anchor="bottom"
           >
             <div className="w-7 h-7 rounded-full bg-white border-2 border-[#e59a3d] shadow-lg overflow-hidden">
