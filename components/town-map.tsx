@@ -7,14 +7,12 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Agent, Location } from '@/lib/types';
-import { locations, agents, getLocationById } from '@/lib/data';
-import { useSimulation, TimeOfDay, WeatherType } from '@/lib/simulation-context';
+import { useTown, TimeOfDay, WeatherType } from '@/lib/town-context';
 import { JourneyVisualization } from '@/components/journey-visualization';
 
 interface TownMapProps {
-  onLocationClick?: (location: Location) => void;
-  selectedAgentId?: string;
+  onLocationClick?: (location: any) => void;
+  selectedCharacterId?: string;
 }
 
 // Weather effects overlay
@@ -117,7 +115,7 @@ function TimeOfDayIndicator({ timeOfDay }: { timeOfDay: TimeOfDay }) {
 }
 
 // Building icons
-const BuildingIcon = ({ type, isSelected, isHovered }: { type: Location['type']; isSelected: boolean; isHovered: boolean }) => {
+const BuildingIcon = ({ type, isSelected, isHovered }: { type: string; isSelected: boolean; isHovered: boolean }) => {
   const getStyles = () => {
     switch (type) {
       case 'home': return { bg: 'bg-rose-100', icon: '🏠' };
@@ -164,7 +162,7 @@ const AgentMarker = ({
   isTraveling, 
   isFollowed 
 }: { 
-  agent: Agent; 
+  agent: any; 
   position: { x: number; y: number };
   isTraveling?: boolean;
   isFollowed?: boolean;
@@ -198,7 +196,7 @@ const AgentMarker = ({
         )}
         
         <img 
-          src={agent.avatar} 
+          src={agent.avatar || agent.avatarUrl || ''} 
           alt={agent.name}
           className={`
             w-10 h-10 rounded-full border-3 shadow-lg object-cover bg-white
@@ -236,9 +234,9 @@ const AgentMarker = ({
   );
 };
 
-export function TownMap({ onLocationClick, selectedAgentId }: TownMapProps) {
-  const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
-  const [hoveredLocation, setHoveredLocation] = useState<string | null>(null);
+export function TownMap({ onLocationClick, selectedCharacterId }: TownMapProps) {
+  const [selectedPlace, setSelectedPlace] = useState<any>(null);
+  const [hoveredPlace, setHoveredPlace] = useState<string | null>(null);
   const [mapScale, setMapScale] = useState(1);
   const [mapOffset, setMapOffset] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
@@ -247,47 +245,58 @@ export function TownMap({ onLocationClick, selectedAgentId }: TownMapProps) {
   const dragStart = useRef({ x: 0, y: 0 });
   
   const { 
-    agentStates, 
+    places,
+    characters,
     activeJourneys, 
     timeOfDay, 
     weather,
-    followedAgentId,
-    followAgent,
-  } = useSimulation();
+    followedCharacterId,
+    followCharacter,
+    currentTime,
+  } = useTown();
 
-  const getAgentPosition = (agentId: string): { x: number; y: number } => {
-    const state = agentStates.get(agentId);
-    if (!state) {
-      const agent = agents.find(a => a.id === agentId);
-      const loc = agent ? getLocationById(agent.currentLocation) : locations[0];
-      return { x: loc?.x || 50, y: loc?.y || 50 };
+  const getCharacterPosition = (characterId: string): { x: number; y: number } => {
+    const character = characters.find(c => c.id === characterId);
+    if (!character) return { x: 50, y: 50 };
+    
+    if (!isValidCoord(character.lat, character.lng)) {
+      return { x: 50, y: 50 };
     }
     
-    if (state.isTraveling && state.journeyFrom && state.journeyTo) {
-      const progress = state.journeyProgress;
-      return {
-        x: state.journeyFrom.x + (state.journeyTo.x - state.journeyFrom.x) * progress,
-        y: state.journeyFrom.y + (state.journeyTo.y - state.journeyFrom.y) * progress,
-      };
+    const journey = activeJourneys.find(j => j.characterId === characterId);
+    if (journey && isValidCoord(journey.fromLocation.lat, journey.fromLocation.lng) && isValidCoord(journey.toLocation.lat, journey.toLocation.lng)) {
+      const lat = journey.fromLocation.lat + (journey.toLocation.lat - journey.fromLocation.lat) * journey.progress;
+      const lng = journey.fromLocation.lng + (journey.toLocation.lng - journey.fromLocation.lng) * journey.progress;
+      return latLngToXY(lat, lng);
     }
     
-    return { x: state.currentLocation.x, y: state.currentLocation.y };
+    return latLngToXY(character.lat, character.lng);
   };
 
-  const getAgentsAtLocation = (locationId: string) => {
-    return agents.filter(agent => {
-      const state = agentStates.get(agent.id);
-      if (!state) return agent.currentLocation === locationId;
-      return state.currentLocation.id === locationId && !state.isTraveling;
+  const isValidCoord = (lat: any, lng: any): boolean => {
+    return typeof lat === 'number' && typeof lng === 'number' && 
+      !isNaN(lat) && !isNaN(lng) && 
+      lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
+  };
+
+  const latLngToXY = (lat: number, lng: number): { x: number; y: number } => {
+    if (!isValidCoord(lat, lng)) return { x: 50, y: 50 };
+    const latMin = 34.13;
+    const latMax = 34.16;
+    const lngMin = -118.28;
+    const lngMax = -118.22;
+    const x = ((lng - lngMin) / (lngMax - lngMin)) * 100;
+    const y = ((latMax - lat) / (latMax - latMin)) * 100;
+    return { x: Math.max(0, Math.min(100, x)), y: Math.max(0, Math.min(100, y)) };
+  };
+
+  const getCharactersAtPlace = (placeId: string) => {
+    return characters.filter(character => {
+      const position = getCharacterPosition(character.id);
+      const placeXY = latLngToXY(places.find(p => p.id === placeId)?.lat || 0, places.find(p => p.id === placeId)?.lng || 0);
+      const distance = Math.sqrt(Math.pow(position.x - placeXY.x, 2) + Math.pow(position.y - placeXY.y, 2));
+      return distance < 5;
     });
-  };
-
-  const getLocationTypeLabel = (type: Location['type']) => {
-    const labels = {
-      home: '住宅', cafe: '咖啡馆', restaurant: '餐厅', shop: '商店',
-      park: '公园', library: '图书馆', work: '地标/工作', transport: '交通'
-    };
-    return labels[type] || '其他';
   };
 
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -417,41 +426,42 @@ export function TownMap({ onLocationClick, selectedAgentId }: TownMapProps) {
           transition: isDragging ? 'none' : 'transform 0.15s ease-out'
         }}
       >
-        {locations.map((location) => {
-          const agentsHere = getAgentsAtLocation(location.id);
-          const isSelected = selectedLocation?.id === location.id;
-          const isHovered = hoveredLocation === location.id;
+        {places.slice(0, 20).map((place) => {
+          const position = latLngToXY(place.lat, place.lng);
+          const charactersHere = getCharactersAtPlace(place.id);
+          const isSelected = selectedPlace?.id === place.id;
+          const isHovered = hoveredPlace === place.id;
 
           return (
             <motion.div
-              key={location.id}
+              key={place.id}
               className="absolute transform -translate-x-1/2 -translate-y-1/2 cursor-pointer"
-              style={{ left: `${location.x}%`, top: `${location.y}%` }}
+              style={{ left: `${position.x}%`, top: `${position.y}%` }}
               onClick={(e) => {
                 e.stopPropagation();
-                setSelectedLocation(location);
-                onLocationClick?.(location);
+                setSelectedPlace(place);
+                onLocationClick?.(place);
               }}
-              onMouseEnter={() => setHoveredLocation(location.id)}
-              onMouseLeave={() => setHoveredLocation(null)}
+              onMouseEnter={() => setHoveredPlace(place.id)}
+              onMouseLeave={() => setHoveredPlace(null)}
             >
-              <BuildingIcon type={location.type} isSelected={isSelected} isHovered={isHovered} />
+              <BuildingIcon type={place.placeType as any} isSelected={isSelected} isHovered={isHovered} />
               
-              {agentsHere.length > 0 && (
+              {charactersHere.length > 0 && (
                 <div className="absolute -bottom-8 left-1/2 -translate-x-1/2 flex -space-x-2">
-                  {agentsHere.slice(0, 3).map((agent, i) => (
+                  {charactersHere.slice(0, 3).map((char, i) => (
                     <motion.img 
-                      key={agent.id}
-                      src={agent.avatar}
-                      alt={agent.name}
+                      key={char.id}
+                      src={char.avatar || ''}
+                      alt={char.name}
                       className="w-6 h-6 rounded-full border-2 border-white shadow-sm"
                       style={{ zIndex: 15 - i }}
                       whileHover={{ scale: 1.2, zIndex: 100 }}
                     />
                   ))}
-                  {agentsHere.length > 3 && (
+                  {charactersHere.length > 3 && (
                     <div className="w-7 h-7 rounded-full bg-[#e59a3d] text-white text-[10px] flex items-center justify-center border-2 border-white font-bold shadow-md">
-                      +{agentsHere.length - 3}
+                      +{charactersHere.length - 3}
                     </div>
                   )}
                 </div>
@@ -466,10 +476,10 @@ export function TownMap({ onLocationClick, selectedAgentId }: TownMapProps) {
                     className="absolute bottom-full mb-14 left-1/2 -translate-x-1/2 whitespace-nowrap z-50"
                   >
                     <div className="bg-white px-3 py-2 rounded-lg shadow-xl border border-gray-200">
-                      <p className="font-bold text-sm text-gray-900">{location.name}</p>
-                      <p className="text-xs text-gray-500">{getLocationTypeLabel(location.type)}</p>
-                      {agentsHere.length > 0 && (
-                        <p className="text-xs text-[#e59a3d] mt-1">{agentsHere.length} 位居民在此</p>
+                      <p className="font-bold text-sm text-gray-900">{place.name}</p>
+                      <p className="text-xs text-gray-500">{place.placeType}</p>
+                      {charactersHere.length > 0 && (
+                        <p className="text-xs text-[#e59a3d] mt-1">{charactersHere.length} 位居民在此</p>
                       )}
                     </div>
                   </motion.div>
@@ -479,17 +489,17 @@ export function TownMap({ onLocationClick, selectedAgentId }: TownMapProps) {
           );
         })}
         
-        {agents.map((agent) => {
-          const state = agentStates.get(agent.id);
-          const position = getAgentPosition(agent.id);
-          const isFollowed = followedAgentId === agent.id;
+        {characters.map((character) => {
+          const position = getCharacterPosition(character.id);
+          const isFollowed = followedCharacterId === character.id;
+          const isTraveling = activeJourneys.some(j => j.characterId === character.id);
           
           return (
             <AgentMarker
-              key={agent.id}
-              agent={agent}
+              key={character.id}
+              agent={character}
               position={position}
-              isTraveling={state?.isTraveling}
+              isTraveling={isTraveling}
               isFollowed={isFollowed}
             />
           );
@@ -538,7 +548,7 @@ export function TownMap({ onLocationClick, selectedAgentId }: TownMapProps) {
 
       {/* Location Details Panel */}
       <AnimatePresence>
-        {selectedLocation && (
+        {selectedPlace && (
           <motion.div
             initial={{ opacity: 0, x: 320 }}
             animate={{ opacity: 1, x: 0 }}
@@ -552,58 +562,43 @@ export function TownMap({ onLocationClick, selectedAgentId }: TownMapProps) {
                   variant="ghost"
                   size="icon"
                   className="absolute top-2 right-2 rounded-full bg-white/20 hover:bg-white/40 text-white"
-                  onClick={() => setSelectedLocation(null)}
+                  onClick={() => setSelectedPlace(null)}
                 >
                   <X className="w-4 h-4" />
                 </Button>
                 <div className="absolute bottom-3 left-4">
                   <div className="w-14 h-14 rounded-xl bg-white shadow-lg flex items-center justify-center text-3xl">
-                    {selectedLocation.icon}
+                    {selectedPlace.placeType === 'cafe' ? '☕' : selectedPlace.placeType === 'restaurant' ? '🍽️' : selectedPlace.placeType === 'park' ? '🌳' : selectedPlace.placeType === 'shop' ? '🛍️' : '📍'}
                   </div>
                 </div>
               </div>
 
               <div className="flex-1 p-4 overflow-y-auto">
                 <Badge className="bg-[#e59a3d] text-white border-0 mb-2 text-xs">
-                  {getLocationTypeLabel(selectedLocation.type)}
+                  {selectedPlace.placeType}
                 </Badge>
-                <h3 className="text-lg font-bold text-gray-900 mb-1">{selectedLocation.name}</h3>
-                <p className="text-sm text-gray-600 mb-3 leading-relaxed">{selectedLocation.description}</p>
-
-                <div className="space-y-2 mb-4 bg-gray-50 rounded-lg p-3">
-                  {selectedLocation.hours && (
-                    <div className="flex items-center gap-2 text-sm text-gray-700">
-                      <Clock className="w-4 h-4 text-[#e59a3d]" />
-                      <span>{selectedLocation.hours}</span>
-                    </div>
-                  )}
-                  {selectedLocation.rating && (
-                    <div className="flex items-center gap-2 text-sm text-gray-700">
-                      <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
-                      <span>{selectedLocation.rating}/5.0</span>
-                    </div>
-                  )}
-                </div>
+                <h3 className="text-lg font-bold text-gray-900 mb-1">{selectedPlace.name}</h3>
+                <p className="text-sm text-gray-600 mb-3 leading-relaxed">{selectedPlace.description || selectedPlace.address || ''}</p>
 
                 <Separator className="my-4" />
 
                 <div>
                   <h4 className="font-semibold text-sm text-gray-900 mb-3 flex items-center gap-2">
                     <User className="w-4 h-4 text-[#e59a3d]" />
-                    当前在此的居民 ({getAgentsAtLocation(selectedLocation.id).length})
+                    当前在此的居民 ({getCharactersAtPlace(selectedPlace.id).length})
                   </h4>
-                  {getAgentsAtLocation(selectedLocation.id).length > 0 ? (
+                  {getCharactersAtPlace(selectedPlace.id).length > 0 ? (
                     <div className="space-y-2">
-                      {getAgentsAtLocation(selectedLocation.id).map(agent => (
+                      {getCharactersAtPlace(selectedPlace.id).map(char => (
                         <div 
-                          key={agent.id} 
+                          key={char.id} 
                           className="flex items-center gap-3 p-2.5 rounded-lg bg-[#fdf6ed] hover:bg-[#f9ecd9] transition-colors cursor-pointer"
-                          onClick={() => followAgent(agent.id)}
+                          onClick={() => followCharacter(char.id)}
                         >
-                          <img src={agent.avatar} alt={agent.name} className="w-10 h-10 rounded-full border-2 border-white shadow-sm" />
+                          <img src={char.avatar || ''} alt={char.name} className="w-10 h-10 rounded-full border-2 border-white shadow-sm" />
                           <div className="flex-1">
-                            <p className="font-medium text-sm text-gray-900">{agent.name}</p>
-                            <p className="text-xs text-gray-500">{agent.occupation}</p>
+                            <p className="font-medium text-sm text-gray-900">{char.name}</p>
+                            <p className="text-xs text-gray-500">{char.occupation}</p>
                           </div>
                           <div className="w-2 h-2 bg-green-500 rounded-full" />
                         </div>

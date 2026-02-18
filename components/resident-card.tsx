@@ -23,9 +23,7 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { useSimulation } from '@/lib/simulation-context';
-import { Agent, ScheduleAction } from '@/lib/types';
-import { getLocationById } from '@/lib/data';
+import { useTown } from '@/lib/town-context';
 
 const actionTypeIcons: Record<ScheduleAction['type'], React.ReactNode> = {
   wake: <Sun className="w-4 h-4" />,

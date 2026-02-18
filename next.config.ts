@@ -63,6 +63,7 @@ const nextConfig: NextConfig = {
               "style-src 'self' 'unsafe-inline'",
               "img-src 'self' blob: data: https:",
               "font-src 'self'",
+              "worker-src 'self' blob:",
               "connect-src 'self' https://api.mapbox.com https://events.mapbox.com",
               "frame-ancestors 'none'",
               "base-uri 'self'",

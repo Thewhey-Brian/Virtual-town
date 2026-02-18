@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Footprints, 
-  MessageCircle, 
   Utensils, 
   ShoppingBag, 
   Briefcase, 
@@ -23,16 +22,14 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Activity, Agent } from '@/lib/types';
-import { useSimulation } from '@/lib/simulation-context';
-import { getAgentById, getLocationById } from '@/lib/data';
+import { useTown } from '@/lib/town-context';
 
 interface ActivityTimelineProps {
-  agentId?: string;
+  characterId?: string;
   limit?: number;
 }
 
-const actionTypeConfig: Record<string, { icon: React.ReactNode; color: string; label: string }> = {
+const activityTypeConfig: Record<string, { icon: React.ReactNode; color: string; label: string }> = {
   wake: { icon: <Sun className="w-4 h-4" />, color: 'bg-orange-100 text-orange-600', label: '起床' },
   sleep: { icon: <Moon className="w-4 h-4" />, color: 'bg-indigo-100 text-indigo-600', label: '睡觉' },
   home: { icon: <Home className="w-4 h-4" />, color: 'bg-rose-100 text-rose-600', label: '在家' },
@@ -45,34 +42,66 @@ const actionTypeConfig: Record<string, { icon: React.ReactNode; color: string; l
   leisure: { icon: <Sparkles className="w-4 h-4" />, color: 'bg-yellow-100 text-yellow-600', label: '休闲' },
 };
 
-export function ActivityTimeline({ agentId, limit }: ActivityTimelineProps) {
+function getActivityType(activity: string): string {
+  const lower = activity.toLowerCase();
+  if (lower.includes('起床') || lower.includes('wake')) return 'wake';
+  if (lower.includes('睡') || lower.includes('sleep')) return 'sleep';
+  if (lower.includes('家') || lower.includes('home')) return 'home';
+  if (lower.includes('工作') || lower.includes('work') || lower.includes('office')) return 'work';
+  if (lower.includes('吃饭') || lower.includes('meal') || lower.includes('lunch') || lower.includes('dinner') || lower.includes('breakfast')) return 'meal';
+  if (lower.includes('购物') || lower.includes('shop') || lower.includes('store')) return 'shopping';
+  if (lower.includes('社交') || lower.includes('social') || lower.includes('meet')) return 'social';
+  if (lower.includes('运动') || lower.includes('exercise') || lower.includes('gym') || lower.includes('run')) return 'exercise';
+  if (lower.includes('移动') || lower.includes('travel') || lower.includes('go to')) return 'travel';
+  return 'leisure';
+}
+
+export function ActivityTimeline({ characterId, limit }: ActivityTimelineProps) {
   const [filter, setFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const { recentActivities } = useSimulation();
+  const { characters, routines, places, currentTime } = useTown();
 
-  let activities = agentId 
-    ? recentActivities.filter(a => a.agentId === agentId)
-    : recentActivities;
+  const currentMinutes = currentTime.getHours() * 60 + currentTime.getMinutes();
 
-  // Apply type filter
+  const activities = routines
+    .filter(r => !characterId || r.characterId === characterId)
+    .map(r => {
+      const character = characters.find(c => c.id === r.characterId);
+      const toPlace = places.find(p => p.id === r.toPlaceId);
+      const fromMinutes = parseInt(r.fromTime.split(':')[0]) * 60 + parseInt(r.fromTime.split(':')[1]);
+      const toMinutes = parseInt(r.toTime.split(':')[0]) * 60 + parseInt(r.toTime.split(':')[1]);
+      const isActive = currentMinutes >= fromMinutes && currentMinutes < toMinutes;
+      return {
+        id: r.id,
+        characterId: r.characterId,
+        characterName: character?.name || 'Unknown',
+        characterAvatar: character?.avatar || '',
+        activity: r.activity,
+        locationName: toPlace?.name || 'Unknown',
+        fromTime: r.fromTime,
+        toTime: r.toTime,
+        isActive,
+        type: getActivityType(r.activity),
+      };
+    });
+
+  let filteredActivities = activities;
+
   if (filter !== 'all') {
-    activities = activities.filter(a => a.action.type === filter);
+    filteredActivities = filteredActivities.filter(a => a.type === filter);
   }
 
-  // Apply search filter
   if (searchQuery) {
-    activities = activities.filter(a => 
-      a.action.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    filteredActivities = filteredActivities.filter(a => 
+      a.activity.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      a.characterName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       a.locationName.toLowerCase().includes(searchQuery.toLowerCase())
     );
   }
 
-  // Sort by timestamp (newest first)
-  activities = activities.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+  filteredActivities = filteredActivities.sort((a, b) => a.fromTime.localeCompare(b.fromTime));
 
-  if (limit) {
-    activities = activities.slice(0, limit);
-  }
+  const displayActivities = limit ? filteredActivities.slice(0, limit) : filteredActivities;
 
   const filters = [
     { value: 'all', label: '全部' },
@@ -85,7 +114,6 @@ export function ActivityTimeline({ agentId, limit }: ActivityTimelineProps) {
 
   return (
     <div className="space-y-4">
-      {/* Search and Filter */}
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -111,13 +139,11 @@ export function ActivityTimeline({ agentId, limit }: ActivityTimelineProps) {
         </div>
       </div>
 
-      {/* Timeline */}
       <ScrollArea className="h-[400px] pr-4">
         <div className="space-y-4">
           <AnimatePresence mode="popLayout">
-            {activities.map((entry, index) => {
-              const config = actionTypeConfig[entry.action.type] || actionTypeConfig['leisure'];
-              const agent = getAgentById(entry.agentId);
+            {displayActivities.map((entry, index) => {
+              const config = activityTypeConfig[entry.type] || activityTypeConfig['leisure'];
 
               return (
                 <motion.div
@@ -127,9 +153,8 @@ export function ActivityTimeline({ agentId, limit }: ActivityTimelineProps) {
                   exit={{ opacity: 0, x: 20 }}
                   transition={{ delay: index * 0.05 }}
                 >
-                  <Card className="p-4 hover:shadow-md transition-shadow">
+                  <Card className={`p-4 hover:shadow-md transition-shadow ${entry.isActive ? 'ring-2 ring-[#e59a3d]' : ''}`}>
                     <div className="flex gap-4">
-                      {/* Icon */}
                       <div className={`
                         w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0
                         ${config.color}
@@ -137,26 +162,32 @@ export function ActivityTimeline({ agentId, limit }: ActivityTimelineProps) {
                         {config.icon}
                       </div>
 
-                      {/* Content */}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex items-center gap-2">
-                            <img 
-                              src={entry.agentAvatar} 
-                              alt={entry.agentName}
-                              className="w-6 h-6 rounded-full border border-gray-200"
-                            />
+                            {entry.characterAvatar ? (
+                              <img 
+                                src={entry.characterAvatar} 
+                                alt={entry.characterName}
+                                className="w-6 h-6 rounded-full border border-gray-200"
+                              />
+                            ) : (
+                              <div className="w-6 h-6 rounded-full bg-gray-200" />
+                            )}
                             <p className="font-medium text-sm text-foreground">
-                              {entry.agentName}
+                              {entry.characterName}
                             </p>
+                            {entry.isActive && (
+                              <Badge className="bg-[#e59a3d] text-xs">进行中</Badge>
+                            )}
                           </div>
                           <Badge variant="secondary" className="text-xs flex-shrink-0">
-                            {entry.timestamp.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
+                            {entry.fromTime} - {entry.toTime}
                           </Badge>
                         </div>
                         
                         <p className="text-sm text-muted-foreground mt-1">
-                          {entry.action.description}
+                          {entry.activity}
                         </p>
 
                         <div className="flex items-center gap-3 mt-2">
@@ -166,36 +197,10 @@ export function ActivityTimeline({ agentId, limit }: ActivityTimelineProps) {
                           >
                             {config.label}
                           </Badge>
-                          <span className="text-xs text-muted-foreground flex items-center gap-1">
-                            {getLocationById(entry.action.toLocation)?.icon}
+                          <span className="text-xs text-muted-foreground">
                             {entry.locationName}
                           </span>
                         </div>
-
-                        {/* Involved agents */}
-                        {entry.action.involvedAgents.length > 0 && (
-                          <div className="flex items-center gap-2 mt-2">
-                            <span className="text-xs text-muted-foreground">一起:</span>
-                            <div className="flex -space-x-1">
-                              {entry.action.involvedAgents.map(relatedId => {
-                                const related = getAgentById(relatedId);
-                                return related ? (
-                                  <div
-                                    key={relatedId}
-                                    className="w-5 h-5 rounded-full border border-white overflow-hidden"
-                                    title={related.name}
-                                  >
-                                    <img 
-                                      src={related.avatar} 
-                                      alt={related.name} 
-                                      className="w-full h-full object-cover"
-                                    />
-                                  </div>
-                                ) : null;
-                              })}
-                            </div>
-                          </div>
-                        )}
                       </div>
                     </div>
                   </Card>
@@ -204,7 +209,7 @@ export function ActivityTimeline({ agentId, limit }: ActivityTimelineProps) {
             })}
           </AnimatePresence>
 
-          {activities.length === 0 && (
+          {displayActivities.length === 0 && (
             <div className="text-center py-12">
               <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[#fdf6ed] flex items-center justify-center">
                 <Filter className="w-8 h-8 text-[#e59a3d]" />
