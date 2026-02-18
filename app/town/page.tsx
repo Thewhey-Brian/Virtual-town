@@ -2,26 +2,31 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import Map, { Marker, Popup, NavigationControl } from 'react-map-gl/mapbox';
+import Map, { Marker, NavigationControl, ScaleControl } from 'react-map-gl/mapbox';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { 
   Play, 
   Pause, 
-  FastForward,
   Users,
   MapPin,
   Activity,
   Plus,
-  X,
   ChevronRight,
   Sun,
   Moon,
   Cloud,
+  CloudRain,
+  CloudSnow,
+  Wind,
+  Thermometer,
+  Leaf,
   Coffee,
   Utensils,
   ShoppingBag,
   Briefcase,
-  Home
+  Home,
+  Heart,
+  Car
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -61,38 +66,59 @@ interface Place {
   placeType: string;
 }
 
-interface Activity {
+interface TimelineEvent {
   id: string;
+  time: number;
+  type: 'move' | 'activity' | 'meeting' | 'special';
+  characterId: string;
   characterName: string;
   characterAvatar: string;
-  action: string;
-  location: string;
-  time: string;
+  description: string;
+  fromLocation?: { lat: number; lng: number; name: string };
+  toLocation?: { lat: number; lng: number; name: string };
+  duration: number;
+  completed: boolean;
 }
+
+interface WeatherState {
+  type: 'sunny' | 'cloudy' | 'rainy' | 'snowy';
+  temperature: number;
+  windSpeed: number;
+}
+
+const SEASONS = ['SPRING', 'SUMMER', 'AUTUMN', 'WINTER'];
 
 const timeMarkers = Array.from({ length: 25 }, (_, i) => i);
 
 export default function TownPage() {
   const [characters, setCharacters] = useState<Character[]>([]);
   const [places, setPlaces] = useState<Place[]>([]);
-  const [activities, setActivities] = useState<Activity[]>([]);
+  const [events, setEvents] = useState<TimelineEvent[]>([]);
   const [currentTime, setCurrentTime] = useState(8);
   const [isPlaying, setIsPlaying] = useState(true);
   const [speed, setSpeed] = useState(1);
   const [selectedCharacter, setSelectedCharacter] = useState<Character | null>(null);
   const [selectedPlace, setSelectedPlace] = useState<Place | null>(null);
-  const [weather] = useState('sunny');
-  const [season] = useState('SPRING');
+  const [weather, setWeather] = useState<WeatherState>({
+    type: 'sunny',
+    temperature: 72,
+    windSpeed: 5,
+  });
+  const [season, setSeason] = useState('SPRING');
   const [activeTab, setActiveTab] = useState<'all' | 'hot' | 'mine'>('all');
   const [showCreateDrawer, setShowCreateDrawer] = useState(false);
+  const [characterPositions, setCharacterPositions] = useState<Record<string, { lat: number; lng: number }>>({});
 
   const [viewState, setViewState] = useState({
     latitude: DEFAULT_LAT,
     longitude: DEFAULT_LNG,
-    zoom: 14,
+    zoom: 15,
+    pitch: 45,
+    bearing: -20,
   });
 
   const activityRef = useRef<HTMLDivElement>(null);
+  const prevTimeRef = useRef(8);
 
   useEffect(() => {
     Promise.all([
@@ -111,46 +137,100 @@ export default function TownPage() {
       }));
       setCharacters(chars);
       setPlaces(pls);
+      
+      const positions: Record<string, { lat: number; lng: number }> = {};
+      chars.forEach((c: Character) => {
+        positions[c.id] = { lat: c.lat, lng: c.lng };
+      });
+      setCharacterPositions(positions);
+      
+      generateDailyEvents(chars, pls);
     }).catch(console.error);
   }, []);
+
+  const generateDailyEvents = (chars: Character[], pls: Place[]) => {
+    const eventTypes = ['move', 'activity', 'meeting', 'special'] as const;
+    const activities = [
+      '在咖啡店工作', '吃午餐', '购物', '散步', '运动', 
+      '会见朋友', '看书', '休息', '上班', '下班回家'
+    ];
+    
+    const newEvents: TimelineEvent[] = [];
+    
+    chars.slice(0, 15).forEach(char => {
+      const numEvents = 4 + Math.floor(Math.random() * 4);
+      
+      for (let i = 0; i < numEvents; i++) {
+        const hour = 6 + (i * (18 / numEvents)) + Math.random() * 2;
+        const place = pls[Math.floor(Math.random() * pls.length)];
+        const prevPlace = i > 0 ? pls[Math.floor(Math.random() * pls.length)] : null;
+        
+        newEvents.push({
+          id: `${char.id}-${i}`,
+          time: hour,
+          type: eventTypes[Math.floor(Math.random() * eventTypes.length)],
+          characterId: char.id,
+          characterName: char.name,
+          characterAvatar: char.avatar || '',
+          description: activities[Math.floor(Math.random() * activities.length)],
+          fromLocation: prevPlace ? { lat: prevPlace.lat, lng: prevPlace.lng, name: prevPlace.name } : undefined,
+          toLocation: { lat: place.lat, lng: place.lng, name: place.name },
+          duration: 0.5 + Math.random() * 1.5,
+          completed: false,
+        });
+      }
+    });
+    
+    newEvents.sort((a, b) => a.time - b.time);
+    setEvents(newEvents);
+  };
 
   useEffect(() => {
     if (!isPlaying) return;
     
     const interval = setInterval(() => {
       setCurrentTime(prev => {
-        const next = prev + 0.1 * speed;
+        const next = prev + 0.05 * speed;
         return next >= 24 ? 0 : next;
       });
-    }, 100);
+    }, 50);
 
     return () => clearInterval(interval);
   }, [isPlaying, speed]);
 
   useEffect(() => {
-    const generateActivity = () => {
-      if (characters.length === 0 || places.length === 0) return;
-      
-      const char = characters[Math.floor(Math.random() * characters.length)];
-      const place = places[Math.floor(Math.random() * places.length)];
-      const actions = ['正在前往', '到达了', '在', '离开了'];
-      const action = actions[Math.floor(Math.random() * actions.length)];
-      
-      const activity: Activity = {
-        id: Date.now().toString(),
-        characterName: char.name,
-        characterAvatar: char.avatar || '',
-        action: `${action} ${place.name}`,
-        location: place.name,
-        time: `${Math.floor(currentTime)}:${String(Math.floor((currentTime % 1) * 60)).padStart(2, '0')}`,
-      };
-      
-      setActivities(prev => [activity, ...prev].slice(0, 50));
-    };
+    const hour = Math.floor(currentTime);
+    
+    if (hour >= 6 && hour < 12) {
+      setWeather({ type: 'sunny', temperature: 70 + Math.random() * 10, windSpeed: 3 + Math.random() * 5 });
+    } else if (hour >= 12 && hour < 18) {
+      setWeather({ type: Math.random() > 0.7 ? 'cloudy' : 'sunny', temperature: 75 + Math.random() * 10, windSpeed: 5 + Math.random() * 10 });
+    } else {
+      setWeather({ type: Math.random() > 0.5 ? 'cloudy' : 'sunny', temperature: 60 + Math.random() * 10, windSpeed: 2 + Math.random() * 5 });
+    }
+    
+    const month = Math.floor((currentTime / 24) * 12) % 4;
+    setSeason(SEASONS[month]);
+  }, [Math.floor(currentTime)]);
 
-    const interval = setInterval(generateActivity, 3000 / speed);
-    return () => clearInterval(interval);
-  }, [characters, places, currentTime, speed]);
+  useEffect(() => {
+    events.forEach(event => {
+      if (!event.completed && currentTime >= event.time && currentTime < event.time + event.duration) {
+        setCharacterPositions(prev => {
+          if (event.toLocation) {
+            return {
+              ...prev,
+              [event.characterId]: {
+                lat: event.toLocation.lat,
+                lng: event.toLocation.lng,
+              },
+            };
+          }
+          return prev;
+        });
+      }
+    });
+  }, [currentTime, events]);
 
   const formatTime = (hour: number) => {
     const h = Math.floor(hour);
@@ -163,6 +243,16 @@ export default function TownPage() {
     return <Moon className="w-4 h-4 text-blue-400" />;
   };
 
+  const getWeatherIcon = () => {
+    switch (weather.type) {
+      case 'sunny': return <Sun className="w-5 h-5 text-yellow-500" />;
+      case 'cloudy': return <Cloud className="w-5 h-5 text-gray-400" />;
+      case 'rainy': return <CloudRain className="w-5 h-5 text-blue-400" />;
+      case 'snowy': return <CloudSnow className="w-5 h-5 text-blue-200" />;
+      default: return <Sun className="w-5 h-5 text-yellow-500" />;
+    }
+  };
+
   const getStatusIcon = (status: string) => {
     const s = status?.toLowerCase() || '';
     if (s.includes('eat') || s.includes('餐')) return <Utensils className="w-3 h-3" />;
@@ -170,17 +260,21 @@ export default function TownPage() {
     if (s.includes('shop')) return <ShoppingBag className="w-3 h-3" />;
     if (s.includes('work')) return <Briefcase className="w-3 h-3" />;
     if (s.includes('home') || s.includes('家')) return <Home className="w-3 h-3" />;
+    if (s.includes('love') || s.includes('爱')) return <Heart className="w-3 h-3" />;
+    if (s.includes('drive') || s.includes('车')) return <Car className="w-3 h-3" />;
     return <MapPin className="w-3 h-3" />;
   };
 
   const handleCharacterClick = (char: Character) => {
     setSelectedCharacter(char);
     setSelectedPlace(null);
+    const pos = characterPositions[char.id] || { lat: char.lat, lng: char.lng };
     setViewState(prev => ({
       ...prev,
-      latitude: char.lat,
-      longitude: char.lng,
-      zoom: 16,
+      latitude: pos.lat,
+      longitude: pos.lng,
+      zoom: 17,
+      pitch: 60,
     }));
   };
 
@@ -191,8 +285,19 @@ export default function TownPage() {
       ...prev,
       latitude: place.lat,
       longitude: place.lng,
-      zoom: 16,
+      zoom: 17,
+      pitch: 60,
     }));
+  };
+
+  const getCurrentEvents = () => {
+    return events.filter(e => 
+      currentTime >= e.time && currentTime < e.time + e.duration && !e.completed
+    );
+  };
+
+  const getUpcomingEvents = () => {
+    return events.filter(e => e.time > currentTime).slice(0, 10);
   };
 
   const validCharacters = characters.filter(c => isValidCoord(c.lat, c.lng));
@@ -208,11 +313,6 @@ export default function TownPage() {
             {getTimeIcon()}
             <span className="text-lg font-semibold text-[#165DFF]">{formatTime(currentTime)}</span>
           </div>
-          <Badge variant="outline" className="text-xs">
-            <Cloud className="w-3 h-3 mr-1" />
-            {weather}
-          </Badge>
-          <Badge variant="outline" className="text-xs">{season}</Badge>
         </div>
 
         {/* Center: Timeline Slider */}
@@ -286,38 +386,51 @@ export default function TownPage() {
           {/* List */}
           <ScrollArea className="flex-1">
             <div className="p-2 space-y-1">
-              {validCharacters.map(char => (
-                <motion.div
-                  key={char.id}
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={() => handleCharacterClick(char)}
-                  className={`p-2 rounded-lg cursor-pointer transition-colors ${
-                    selectedCharacter?.id === char.id 
-                      ? 'bg-[#165DFF]/10 ring-1 ring-[#165DFF]' 
-                      : 'hover:bg-gray-50'
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="relative">
-                      <img
-                        src={char.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${char.id}`}
-                        alt={char.name}
-                        className="w-10 h-10 rounded-full bg-gray-100"
-                      />
-                      <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 rounded-full border-2 border-white" />
+              {validCharacters.map(char => {
+                const currentEvent = events.find(e => 
+                  e.characterId === char.id && 
+                  currentTime >= e.time && 
+                  currentTime < e.time + e.duration
+                );
+                
+                return (
+                  <motion.div
+                    key={char.id}
+                    layout
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => handleCharacterClick(char)}
+                    className={`p-2 rounded-lg cursor-pointer transition-colors ${
+                      selectedCharacter?.id === char.id 
+                        ? 'bg-[#165DFF]/10 ring-1 ring-[#165DFF]' 
+                        : currentEvent
+                        ? 'bg-[#FF7D00]/5'
+                        : 'hover:bg-gray-50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="relative">
+                        <img
+                          src={char.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${char.id}`}
+                          alt={char.name}
+                          className="w-10 h-10 rounded-full bg-gray-100"
+                        />
+                        <div className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white ${
+                          currentEvent ? 'bg-[#FF7D00]' : 'bg-green-500'
+                        }`} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm truncate">{char.name}</p>
+                        <p className="text-xs text-gray-500 truncate flex items-center gap-1">
+                          {getStatusIcon(currentEvent?.description || char.currentStatus)}
+                          {currentEvent?.description || char.currentStatus || '空闲中'}
+                        </p>
+                      </div>
+                      <ChevronRight className="w-4 h-4 text-gray-400" />
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-sm truncate">{char.name}</p>
-                      <p className="text-xs text-gray-500 truncate flex items-center gap-1">
-                        {getStatusIcon(char.currentStatus)}
-                        {char.currentStatus || '空闲中'}
-                      </p>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-gray-400" />
-                  </div>
-                </motion.div>
-              ))}
+                  </motion.div>
+                );
+              })}
             </div>
           </ScrollArea>
         </div>
@@ -328,66 +441,166 @@ export default function TownPage() {
             <Map
               {...viewState}
               onMove={evt => setViewState(evt.viewState)}
-              mapStyle="mapbox://styles/mapbox/light-v11"
+              mapStyle="mapbox://styles/mapbox/streets-v12"
               mapboxAccessToken={MAPBOX_TOKEN}
               style={{ width: '100%', height: '100%' }}
+              terrain={{ source: 'mapbox-dem', exaggeration: 1.5 }}
             >
-              <NavigationControl position="top-left" />
+              <NavigationControl position="top-left" visualizePitch />
+              <ScaleControl position="bottom-left" />
+              
+              {/* Weather Overlay */}
+              <div className="absolute top-4 left-16 z-10 bg-white/90 backdrop-blur-sm rounded-xl p-3 shadow-lg">
+                <div className="flex items-center gap-3">
+                  {getWeatherIcon()}
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <Thermometer className="w-3 h-3 text-gray-400" />
+                      <span className="text-sm font-medium">{Math.round(weather.temperature)}°F</span>
+                    </div>
+                    <div className="flex items-center gap-2 mt-1">
+                      <Wind className="w-3 h-3 text-gray-400" />
+                      <span className="text-xs text-gray-500">{Math.round(weather.windSpeed)} mph</span>
+                    </div>
+                  </div>
+                  <div className="pl-3 border-l border-gray-200">
+                    <Leaf className="w-4 h-4 text-green-500" />
+                    <span className="text-xs text-gray-600 block">{season}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Time of Day Overlay */}
+              <div 
+                className="absolute inset-0 pointer-events-none z-5 transition-all duration-1000"
+                style={{
+                  background: currentTime >= 6 && currentTime < 18
+                    ? 'transparent'
+                    : currentTime >= 18 && currentTime < 21
+                    ? 'linear-gradient(to bottom, rgba(255,140,0,0.1), rgba(255,100,0,0.15))'
+                    : 'linear-gradient(to bottom, rgba(0,0,50,0.2), rgba(0,0,30,0.3))',
+                }}
+              />
 
               {/* Places */}
-              {validPlaces.slice(0, 30).map(place => (
-                <Marker
-                  key={place.id}
-                  latitude={place.lat}
-                  longitude={place.lng}
-                  anchor="bottom"
-                  onClick={e => {
-                    e.originalEvent.stopPropagation();
-                    handlePlaceClick(place);
-                  }}
-                >
-                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs cursor-pointer transition-transform hover:scale-110 ${
-                    selectedPlace?.id === place.id 
-                      ? 'bg-[#FF7D00] text-white ring-2 ring-[#FF7D00]/30' 
-                      : 'bg-white border border-gray-200'
-                  }`}>
-                    📍
-                  </div>
-                </Marker>
-              ))}
-
-              {/* Characters */}
-              {validCharacters.slice(0, 30).map(char => (
-                <Marker
-                  key={char.id}
-                  latitude={char.lat}
-                  longitude={char.lng}
-                  anchor="bottom"
-                  onClick={e => {
-                    e.originalEvent.stopPropagation();
-                    handleCharacterClick(char);
-                  }}
-                >
-                  <div className={`relative cursor-pointer transition-transform hover:scale-110 ${
-                    selectedCharacter?.id === char.id ? 'scale-125' : ''
-                  }`}>
-                    {selectedCharacter?.id === char.id && (
-                      <motion.div
-                        className="absolute inset-0 -m-1 rounded-full border-2 border-[#FF7D00]"
-                        animate={{ scale: [1, 1.2, 1], opacity: [1, 0.5, 1] }}
-                        transition={{ duration: 1.5, repeat: Infinity }}
-                      />
-                    )}
-                    <img
-                      src={char.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${char.id}`}
-                      alt={char.name}
-                      className={`w-8 h-8 rounded-full border-2 border-white shadow-md ${
-                        selectedCharacter?.id === char.id ? 'border-[#FF7D00]' : ''
+              {validPlaces.slice(0, 30).map(place => {
+                const visitorsHere = events.filter(e => 
+                  currentTime >= e.time && 
+                  currentTime < e.time + e.duration &&
+                  e.toLocation?.lat === place.lat &&
+                  e.toLocation?.lng === place.lng
+                );
+                
+                return (
+                  <Marker
+                    key={place.id}
+                    latitude={place.lat}
+                    longitude={place.lng}
+                    anchor="bottom"
+                    onClick={e => {
+                      e.originalEvent.stopPropagation();
+                      handlePlaceClick(place);
+                    }}
+                  >
+                    <motion.div 
+                      className={`relative cursor-pointer transition-transform hover:scale-110 ${
+                        selectedPlace?.id === place.id ? 'scale-125' : ''
                       }`}
-                    />
-                  </div>
-                </Marker>
-              ))}
+                      animate={visitorsHere.length > 0 ? { scale: [1, 1.1, 1] } : {}}
+                      transition={{ duration: 0.5, repeat: visitorsHere.length > 0 ? Infinity : 0 }}
+                    >
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm shadow-lg ${
+                        selectedPlace?.id === place.id 
+                          ? 'bg-[#FF7D00] text-white ring-2 ring-[#FF7D00]/30' 
+                          : visitorsHere.length > 0
+                          ? 'bg-[#165DFF] text-white'
+                          : 'bg-white border border-gray-200'
+                      }`}>
+                        📍
+                      </div>
+                      {visitorsHere.length > 0 && (
+                        <div className="absolute -top-1 -right-1 w-5 h-5 bg-[#FF7D00] rounded-full flex items-center justify-center text-[10px] text-white font-bold">
+                          {visitorsHere.length}
+                        </div>
+                      )}
+                    </motion.div>
+                  </Marker>
+                );
+              })}
+
+              {/* Characters with animation */}
+              {validCharacters.slice(0, 30).map(char => {
+                const pos = characterPositions[char.id] || { lat: char.lat, lng: char.lng };
+                const currentEvent = events.find(e => 
+                  e.characterId === char.id && 
+                  currentTime >= e.time && 
+                  currentTime < e.time + e.duration
+                );
+                
+                if (!isValidCoord(pos.lat, pos.lng)) return null;
+                
+                return (
+                  <Marker
+                    key={char.id}
+                    latitude={pos.lat}
+                    longitude={pos.lng}
+                    anchor="bottom"
+                    onClick={e => {
+                      e.originalEvent.stopPropagation();
+                      handleCharacterClick(char);
+                    }}
+                  >
+                    <motion.div
+                      initial={{ scale: 0 }}
+                      animate={{ 
+                        scale: selectedCharacter?.id === char.id ? 1.3 : 1,
+                      }}
+                      whileHover={{ scale: 1.2 }}
+                      className="relative cursor-pointer"
+                    >
+                      {selectedCharacter?.id === char.id && (
+                        <motion.div
+                          className="absolute inset-0 -m-2 rounded-full border-3 border-[#FF7D00]"
+                          animate={{ scale: [1, 1.3, 1], opacity: [1, 0.5, 1] }}
+                          transition={{ duration: 1, repeat: Infinity }}
+                        />
+                      )}
+                      
+                      {currentEvent?.type === 'move' && (
+                        <motion.div
+                          className="absolute inset-0 -m-1 rounded-full bg-[#165DFF]/20"
+                          animate={{ scale: [1, 1.5, 1], opacity: [0.5, 0, 0.5] }}
+                          transition={{ duration: 0.5, repeat: Infinity }}
+                        />
+                      )}
+                      
+                      <img
+                        src={char.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${char.id}`}
+                        alt={char.name}
+                        className={`w-9 h-9 rounded-full border-3 shadow-lg ${
+                          selectedCharacter?.id === char.id 
+                            ? 'border-[#FF7D00]' 
+                            : currentEvent
+                            ? 'border-[#165DFF]'
+                            : 'border-white'
+                        }`}
+                      />
+                      
+                      {currentEvent && (
+                        <motion.div
+                          initial={{ opacity: 0, y: -5 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className="absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap"
+                        >
+                          <span className="text-[9px] px-1.5 py-0.5 bg-[#165DFF] text-white rounded-full shadow">
+                            {currentEvent.description.slice(0, 8)}
+                          </span>
+                        </motion.div>
+                      )}
+                    </motion.div>
+                  </Marker>
+                );
+              })}
             </Map>
           ) : (
             <div className="h-full flex items-center justify-center bg-gray-100">
@@ -396,39 +609,74 @@ export default function TownPage() {
           )}
         </div>
 
-        {/* Right: Activity Feed */}
+        {/* Right: Event Feed */}
         <div className="w-[280px] bg-white border-l border-gray-200 flex flex-col shrink-0">
           <div className="p-3 border-b border-gray-200">
             <h3 className="font-medium text-sm flex items-center gap-2">
               <Activity className="w-4 h-4 text-[#165DFF]" />
-              小镇正在发生…
+              小镇事件
             </h3>
           </div>
           <ScrollArea className="flex-1" ref={activityRef}>
             <div className="p-2 space-y-2">
-              <AnimatePresence initial={false}>
-                {activities.map((activity, i) => (
-                  <motion.div
-                    key={activity.id}
-                    initial={{ opacity: 0, y: -20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: 20 }}
-                    transition={{ delay: i * 0.05 }}
-                    className="p-2 rounded-lg bg-gray-50 text-xs"
-                  >
-                    <div className="flex items-center gap-2">
-                      <img
-                        src={activity.characterAvatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${activity.id}`}
-                        alt=""
-                        className="w-5 h-5 rounded-full"
-                      />
-                      <span className="font-medium">{activity.characterName}</span>
-                      <span className="text-gray-400 text-[10px] ml-auto">{activity.time}</span>
-                    </div>
-                    <p className="text-gray-600 mt-1 pl-7">{activity.action}</p>
-                  </motion.div>
-                ))}
-              </AnimatePresence>
+              {/* Current Events */}
+              {getCurrentEvents().length > 0 && (
+                <div className="mb-2">
+                  <p className="text-[10px] text-gray-400 uppercase mb-1 px-1">正在进行</p>
+                  {getCurrentEvents().map((event, i) => (
+                    <motion.div
+                      key={event.id}
+                      initial={{ opacity: 0, x: 20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: i * 0.05 }}
+                      className="p-2 rounded-lg bg-[#FF7D00]/10 border border-[#FF7D00]/20 mb-1"
+                    >
+                      <div className="flex items-center gap-2">
+                        <img
+                          src={event.characterAvatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${event.id}`}
+                          alt=""
+                          className="w-5 h-5 rounded-full"
+                        />
+                        <span className="font-medium text-xs">{event.characterName}</span>
+                      </div>
+                      <p className="text-xs text-gray-600 mt-1 pl-7">{event.description}</p>
+                      {event.toLocation && (
+                        <p className="text-[10px] text-gray-400 mt-1 pl-7">📍 {event.toLocation.name}</p>
+                      )}
+                    </motion.div>
+                  ))}
+                </div>
+              )}
+              
+              {/* Upcoming Events */}
+              <div>
+                <p className="text-[10px] text-gray-400 uppercase mb-1 px-1">即将发生</p>
+                <AnimatePresence initial={false}>
+                  {getUpcomingEvents().map((event, i) => (
+                    <motion.div
+                      key={event.id}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      transition={{ delay: i * 0.03 }}
+                      className="p-2 rounded-lg bg-gray-50 text-xs mb-1"
+                    >
+                      <div className="flex items-center gap-2">
+                        <img
+                          src={event.characterAvatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${event.id}`}
+                          alt=""
+                          className="w-4 h-4 rounded-full"
+                        />
+                        <span className="font-medium">{event.characterName}</span>
+                        <span className="text-gray-400 text-[10px] ml-auto">
+                          {formatTime(event.time)}
+                        </span>
+                      </div>
+                      <p className="text-gray-600 mt-1 pl-6">{event.description}</p>
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
+              </div>
             </div>
           </ScrollArea>
         </div>
