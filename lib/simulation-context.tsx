@@ -23,6 +23,23 @@ export type Agent = {
   workLocation?: string;
   currentStatus?: string;
   currentMood?: string;
+  personality?: string;
+  routine?: {
+    wakeUp?: string;
+    sleep?: string;
+    workStart?: string;
+    workEnd?: string;
+    workHours?: string;
+    preferences?: string[];
+  };
+  stats?: {
+    clothing?: number;
+    food?: number;
+    housing?: number;
+    transport?: number;
+  };
+  lat?: number;
+  lng?: number;
 };
 
 export interface AgentState {

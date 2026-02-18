@@ -24,6 +24,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { useSimulation, ScheduleAction, Agent } from '@/lib/simulation-context';
+import { getLocationById } from '@/lib/data';
 
 const actionTypeIcons: Record<ScheduleAction['type'], React.ReactNode> = {
   wake: <Sun className="w-4 h-4" />,
@@ -75,17 +76,16 @@ export function ResidentCard({ agent, onFollow, isFollowing }: ResidentCardProps
   const [isExpanded, setIsExpanded] = useState(false);
   
   const state = getAgentState(agent.id);
-  if (!state) return null;
   
-  const { currentAction, isTraveling, journeyProgress, currentLocation } = state;
-  const location = getLocationById(agent.currentLocation);
+  const { currentAction, isTraveling, journeyProgress, currentLocation } = (state as any) || {};
+  const location = getLocationById(agent.currentLocation || '');
   
   // Calculate stats with animation
   const stats = [
-    { label: '衣', value: agent.stats.clothing, icon: '👔', color: 'bg-blue-500' },
-    { label: '食', value: agent.stats.food, icon: '🍽️', color: 'bg-orange-500' },
-    { label: '住', value: agent.stats.housing, icon: '🏠', color: 'bg-rose-500' },
-    { label: '行', value: agent.stats.transport, icon: '🚶', color: 'bg-green-500' },
+    { label: '衣', value: (agent as any).stats?.clothing || 80, icon: '👔', color: 'bg-blue-500' },
+    { label: '食', value: (agent as any).stats?.food || 80, icon: '🍽️', color: 'bg-orange-500' },
+    { label: '住', value: (agent as any).stats?.housing || 80, icon: '🏠', color: 'bg-rose-500' },
+    { label: '行', value: (agent as any).stats?.transport || 80, icon: '🚶', color: 'bg-green-500' },
   ];
   
   return (
@@ -259,7 +259,7 @@ export function ResidentCard({ agent, onFollow, isFollowing }: ResidentCardProps
                   <div>
                     <h4 className="text-xs font-semibold text-gray-700 mb-1">性格特点</h4>
                     <div className="flex flex-wrap gap-1">
-                      {agent.personality.split('、').map((trait, i) => (
+                      {((agent as any).personality || '友好、善良').split('、').map((trait: string, i: number) => (
                         <span key={i} className="px-2 py-0.5 bg-gray-100 rounded-full text-[10px] text-gray-600">
                           {trait}
                         </span>
@@ -273,15 +273,15 @@ export function ResidentCard({ agent, onFollow, isFollowing }: ResidentCardProps
                     <div className="space-y-1 text-xs text-gray-600">
                       <div className="flex justify-between">
                         <span>起床时间</span>
-                        <span className="font-medium">{agent.routine.wakeUp}</span>
+                        <span className="font-medium">{agent.routine?.wakeUp || '07:00'}</span>
                       </div>
                       <div className="flex justify-between">
                         <span>睡觉时间</span>
-                        <span className="font-medium">{agent.routine.sleep}</span>
+                        <span className="font-medium">{agent.routine?.sleep || '23:00'}</span>
                       </div>
                       <div className="flex justify-between">
                         <span>工作时间</span>
-                        <span className="font-medium">{agent.routine.workHours}</span>
+                        <span className="font-medium">{agent.routine?.workHours || '09:00-18:00'}</span>
                       </div>
                     </div>
                   </div>
@@ -290,7 +290,7 @@ export function ResidentCard({ agent, onFollow, isFollowing }: ResidentCardProps
                   <div>
                     <h4 className="text-xs font-semibold text-gray-700 mb-1">兴趣爱好</h4>
                     <div className="flex flex-wrap gap-1">
-                      {agent.routine.preferences.map((pref, i) => (
+                      {(agent.routine?.preferences || ['阅读', '音乐']).map((pref, i) => (
                         <span key={i} className="px-2 py-0.5 bg-[#fdf6ed] text-[#e59a3d] rounded-full text-[10px]">
                           {pref}
                         </span>
