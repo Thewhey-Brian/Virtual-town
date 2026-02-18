@@ -98,9 +98,9 @@ export const RATE_LIMITS = {
     maxRequests: 20,
     windowSeconds: 60,
   },
-  // General API
+  // General API - increased for polling
   default: {
-    maxRequests: 100,
+    maxRequests: 300,
     windowSeconds: 60,
   },
 } as const;

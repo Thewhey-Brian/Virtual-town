@@ -1,8 +1,11 @@
 'use client';
 
-import { Suspense, useCallback } from 'react';
+import React from 'react';
+import { Suspense, useCallback, useState, useEffect } from 'react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
+import Map, { Marker, NavigationControl } from 'react-map-gl/mapbox';
+import 'mapbox-gl/dist/mapbox-gl.css';
 import { 
   MapPin, 
   Calendar,
@@ -16,16 +19,21 @@ import {
   Navigation,
   Menu,
   Home,
-  Map,
+  Map as MapIcon,
   History,
   BookOpen,
   RefreshCw,
-  AlertCircle
+  AlertCircle,
+  Coffee,
+  Utensils,
+  ShoppingBag,
+  Briefcase
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Sheet, SheetContent, SheetTrigger, SheetClose } from '@/components/ui/sheet';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { useApi } from '@/lib/hooks/use-api';
 import { ErrorBoundary, SectionErrorBoundary } from '@/components/error-boundary';
 import { 
@@ -34,6 +42,16 @@ import {
   StatCardSkeleton,
   DashboardSkeleton 
 } from '@/components/skeletons';
+
+const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN || '';
+const DEFAULT_LAT = 34.1469;
+const DEFAULT_LNG = -118.2551;
+
+function isValidCoord(lat: any, lng: any): boolean {
+  return typeof lat === 'number' && typeof lng === 'number' && 
+    !isNaN(lat) && !isNaN(lng) && 
+    lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
+}
 
 // Types
 interface Town {
@@ -84,7 +102,7 @@ function DashboardNavigation() {
   const navItems = [
     { href: '/', label: '首页', icon: Home },
     { href: '/characters', label: '居民', icon: Users },
-    { href: '/map', label: '地图', icon: Map },
+    { href: '/map', label: '地图', icon: MapIcon },
     { href: '/playback', label: '回放', icon: History },
     { href: '/prompt', label: '命令', icon: Navigation },
   ];
@@ -421,7 +439,7 @@ function WeatherCard({
       <div className="mt-4 pt-4 border-t border-[#e59a3d]/20">
         <Link href="/map">
           <Button className="w-full bg-[#e59a3d] hover:bg-[#d4862a]">
-            <Map className="w-4 h-4 mr-2" />
+            <MapIcon className="w-4 h-4 mr-2" />
             查看地图
           </Button>
         </Link>
@@ -465,9 +483,19 @@ function DashboardContent() {
     cacheTTL: 3600,
   });
 
+  const { 
+    data: routinesData,
+    isLoading: routinesLoading,
+  } = useApi<{ routines: any[] }>({
+    url: '/api/routines/current',
+    cacheKey: 'routines',
+    cacheTTL: 60,
+  });
+
   const town = townData || null;
   const characters = charactersData?.characters || [];
   const places = placesData?.places || [];
+  const routines = routinesData?.routines || [];
 
   const isLoading = townLoading || charsLoading || placesLoading;
   const hasError = townError || charsError || placesError;
@@ -553,7 +581,7 @@ function DashboardContent() {
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6">
             
             {/* Characters Column */}
-            <div className="lg:col-span-4 space-y-3 sm:space-y-4">
+            <div className="lg:col-span-3 space-y-3 sm:space-y-4">
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
                   <Users className="w-5 h-5 text-[#e59a3d]" />
@@ -561,8 +589,7 @@ function DashboardContent() {
                 </h2>
                 <Link href="/characters">
                   <Button variant="ghost" size="sm" className="text-[#e59a3d]">
-                    查看全部
-                    <ArrowRight className="w-4 h-4 ml-1" />
+                    <ArrowRight className="w-4 h-4" />
                   </Button>
                 </Link>
               </div>
@@ -578,7 +605,7 @@ function DashboardContent() {
             </div>
 
             {/* Map Preview Column */}
-            <div className="lg:col-span-8 space-y-3 sm:space-y-4">
+            <div className="lg:col-span-6 space-y-3 sm:space-y-4">
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
                   <MapPin className="w-5 h-5 text-[#e59a3d]" />
@@ -586,7 +613,7 @@ function DashboardContent() {
                 </h2>
                 <Link href="/map">
                   <Button variant="ghost" size="sm" className="text-[#e59a3d]">
-                    全屏查看
+                    全屏
                     <ArrowRight className="w-4 h-4 ml-1" />
                   </Button>
                 </Link>
@@ -594,49 +621,45 @@ function DashboardContent() {
 
               {/* Map Preview */}
               <Card className="h-[300px] sm:h-[400px] lg:h-[500px] overflow-hidden relative">
-                <Link href="/map" className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-[#fefbf7] to-[#f9e8d0] group cursor-pointer">
-                  <div className="text-center">
-                    <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-[#e59a3d]/10 flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
-                      <Map className="w-8 h-8 sm:w-10 sm:h-10 text-[#e59a3d]" />
+                {MAPBOX_TOKEN ? (
+                  <MiniMap places={places} characters={characters} />
+                ) : (
+                  <div className="h-full flex items-center justify-center bg-gradient-to-br from-[#fefbf7] to-[#f9e8d0]">
+                    <div className="text-center">
+                      <MapPin className="w-12 h-12 text-[#e59a3d] mx-auto mb-2" />
+                      <p className="text-muted-foreground">Mapbox token not configured</p>
                     </div>
-                    <p className="text-lg font-medium text-foreground mb-2">Interactive Map</p>
-                    <p className="text-sm text-muted-foreground mb-4">
-                      {isLoading ? 'Loading...' : `${places.length} locations • ${characters.length} residents`}
-                    </p>
-                    <Button className="bg-[#e59a3d] hover:bg-[#d4862a]">
-                      Open Map
-                    </Button>
                   </div>
-                </Link>
+                )}
               </Card>
+            </div>
 
-              {/* Quick Actions */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <Link href="/characters/new">
-                  <Card className="p-4 text-center hover:shadow-md transition-all cursor-pointer group">
-                    <Users className="w-6 h-6 mx-auto mb-2 text-[#e59a3d] group-hover:scale-110 transition-transform" />
-                    <p className="text-sm font-medium">创建居民</p>
-                  </Card>
-                </Link>
-                <Link href="/playback">
-                  <Card className="p-4 text-center hover:shadow-md transition-all cursor-pointer group">
-                    <History className="w-6 h-6 mx-auto mb-2 text-green-600 group-hover:scale-110 transition-transform" />
-                    <p className="text-sm font-medium">时间回放</p>
-                  </Card>
-                </Link>
-                <Link href="/prompt">
-                  <Card className="p-4 text-center hover:shadow-md transition-all cursor-pointer group">
-                    <Navigation className="w-6 h-6 mx-auto mb-2 text-blue-600 group-hover:scale-110 transition-transform" />
-                    <p className="text-sm font-medium">发送命令</p>
-                  </Card>
-                </Link>
-                <Link href="/events">
-                  <Card className="p-4 text-center hover:shadow-md transition-all cursor-pointer group">
-                    <Calendar className="w-6 h-6 mx-auto mb-2 text-purple-600 group-hover:scale-110 transition-transform" />
-                    <p className="text-sm font-medium">事件日历</p>
-                  </Card>
+            {/* Activity Timeline Column */}
+            <div className="lg:col-span-3 space-y-3 sm:space-y-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
+                  <Activity className="w-5 h-5 text-[#e59a3d]" />
+                  今日活动
+                </h2>
+                <Link href="/logs">
+                  <Button variant="ghost" size="sm" className="text-[#e59a3d]">
+                    全部
+                    <ArrowRight className="w-4 h-4 ml-1" />
+                  </Button>
                 </Link>
               </div>
+
+              <Card className="p-4">
+                {routinesLoading ? (
+                  <div className="space-y-2">
+                    {[...Array(5)].map((_, i) => (
+                      <Skeleton key={i} height={60} />
+                    ))}
+                  </div>
+                ) : (
+                  <ActivityTimeline routines={routines} />
+                )}
+              </Card>
             </div>
           </div>
         </div>
@@ -656,5 +679,114 @@ export default function HomePage() {
   );
 }
 
-// Add React import
-import React from 'react';
+// Activity Timeline Component
+function ActivityTimeline({ routines }: { routines: any[] }) {
+  const recentRoutines = routines.slice(0, 5);
+  
+  const getActivityIcon = (activity: string) => {
+    const lower = activity?.toLowerCase() || '';
+    if (lower.includes('coffee') || lower.includes('咖啡')) return <Coffee className="w-4 h-4" />;
+    if (lower.includes('lunch') || lower.includes('dinner') || lower.includes('breakfast') || lower.includes('餐')) return <Utensils className="w-4 h-4" />;
+    if (lower.includes('shop') || lower.includes('购')) return <ShoppingBag className="w-4 h-4" />;
+    if (lower.includes('work') || lower.includes('工作')) return <Briefcase className="w-4 h-4" />;
+    return <Activity className="w-4 h-4" />;
+  };
+
+  if (recentRoutines.length === 0) {
+    return (
+      <div className="text-center py-8 text-muted-foreground">
+        <Activity className="w-8 h-8 mx-auto mb-2 opacity-50" />
+        <p className="text-sm">No recent activities</p>
+      </div>
+    );
+  }
+
+  return (
+    <ScrollArea className="h-[300px]">
+      <div className="space-y-2">
+        {recentRoutines.map((routine, i) => (
+          <motion.div
+            key={routine.id || i}
+            initial={{ opacity: 0, x: -10 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: i * 0.05 }}
+          >
+            <Card className="p-3 hover:shadow-sm transition-shadow">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-full bg-[#fdf6ed] flex items-center justify-center text-[#e59a3d]">
+                  {getActivityIcon(routine.activity)}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{routine.activity || 'Activity'}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {routine.fromTime} - {routine.toTime}
+                  </p>
+                </div>
+              </div>
+            </Card>
+          </motion.div>
+        ))}
+      </div>
+    </ScrollArea>
+  );
+}
+
+// Mini Map Component
+function MiniMap({ places, characters }: { places: Place[]; characters: Character[] }) {
+  const [viewState, setViewState] = useState({
+    latitude: DEFAULT_LAT,
+    longitude: DEFAULT_LNG,
+    zoom: 13,
+  });
+
+  const validPlaces = places.filter(p => isValidCoord(p.lat, p.lng));
+  const validCharacters = characters.filter(c => isValidCoord((c as any).lat, (c as any).lng));
+
+  return (
+    <div className="h-full w-full relative">
+      <Map
+        {...viewState}
+        onMove={evt => setViewState(evt.viewState)}
+        mapStyle="mapbox://styles/mapbox/streets-v12"
+        mapboxAccessToken={MAPBOX_TOKEN}
+        style={{ width: '100%', height: '100%' }}
+      >
+        <NavigationControl position="top-right" />
+        
+        {validPlaces.slice(0, 20).map(place => (
+          <Marker
+            key={place.id}
+            latitude={place.lat}
+            longitude={place.lng}
+            anchor="bottom"
+          >
+            <div className="w-6 h-6 bg-[#e59a3d] rounded-full flex items-center justify-center text-white text-xs shadow-lg">
+              📍
+            </div>
+          </Marker>
+        ))}
+        
+        {validCharacters.slice(0, 20).map(char => (
+          <Marker
+            key={char.id}
+            latitude={(char as any).lat}
+            longitude={(char as any).lng}
+            anchor="bottom"
+          >
+            <div className="w-7 h-7 rounded-full bg-white border-2 border-[#e59a3d] shadow-lg overflow-hidden">
+              <img 
+                src={char.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${char.id}`}
+                alt={char.name}
+                className="w-full h-full object-cover"
+              />
+            </div>
+          </Marker>
+        ))}
+      </Map>
+      
+      <Link href="/map" className="absolute inset-0 z-10">
+        <span className="sr-only">Open full map</span>
+      </Link>
+    </div>
+  );
+}
