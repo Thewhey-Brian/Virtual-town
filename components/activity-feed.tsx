@@ -43,8 +43,9 @@ const actionTypeConfig: Record<ScheduleAction['type'], { icon: React.ReactNode; 
 
 // Single activity item
 function ActivityItem({ entry, isNew }: { entry: ActivityLogEntry; isNew?: boolean }) {
-  const config = actionTypeConfig[entry.action.type];
-  const location = getLocationById(entry.action.toLocation);
+  const actionType = entry.action?.type || 'leisure';
+  const config = actionTypeConfig[actionType as keyof typeof actionTypeConfig] || actionTypeConfig.leisure;
+  const location = getLocationById(entry.action?.toLocation || '');
   
   // Format relative time
   const formatRelativeTime = (date: Date) => {
@@ -79,11 +80,11 @@ function ActivityItem({ entry, isNew }: { entry: ActivityLogEntry; isNew?: boole
             {/* Status indicator */}
             <motion.div 
               className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white ${
-                entry.action.type === 'travel' ? 'bg-blue-500' : 
-                entry.action.type === 'work' ? 'bg-violet-500' : 
-                entry.action.type === 'meal' ? 'bg-orange-500' : 'bg-green-500'
+                entry.action?.type === 'travel' ? 'bg-blue-500' : 
+                entry.action?.type === 'work' ? 'bg-violet-500' : 
+                entry.action?.type === 'meal' ? 'bg-orange-500' : 'bg-green-500'
               }`}
-              animate={entry.action.type === 'travel' ? { scale: [1, 1.2, 1] } : {}}
+              animate={entry.action?.type === 'travel' ? { scale: [1, 1.2, 1] } : {}}
               transition={{ duration: 1, repeat: Infinity }}
             />
           </div>
@@ -96,7 +97,7 @@ function ActivityItem({ entry, isNew }: { entry: ActivityLogEntry; isNew?: boole
                   {entry.agentName}
                 </p>
                 <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">
-                  {entry.action.description}
+                  {(entry.action as any)?.description || '活动'}
                 </p>
               </div>
               <span className="text-[10px] text-gray-400 flex-shrink-0">
@@ -123,11 +124,11 @@ function ActivityItem({ entry, isNew }: { entry: ActivityLogEntry; isNew?: boole
             </div>
             
             {/* Involved agents */}
-            {entry.action.involvedAgents.length > 0 && (
+            {(entry.action as any)?.involvedAgents?.length > 0 && (
               <div className="flex items-center gap-2 mt-2">
                 <span className="text-[10px] text-gray-400">一起:</span>
                 <div className="flex -space-x-1">
-                  {entry.action.involvedAgents.map((agentId) => {
+                  {((entry.action as any)?.involvedAgents || []).map((agentId: string) => {
                     const agent = getAgentById(agentId);
                     return agent ? (
                       <img
@@ -174,16 +175,17 @@ const filterOptions: { value: ScheduleAction['type'] | 'all'; label: string }[] 
 
 // Main Activity Feed component
 export function ActivityFeed() {
-  const { recentActivities, agentStates, currentTime } = useSimulation();
+  const { currentTime } = useSimulation();
   const [filter, setFilter] = useState<ScheduleAction['type'] | 'all'>('all');
   const [autoScroll, setAutoScroll] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const prevActivitiesLength = useRef(recentActivities.length);
+  const [recentActivities, setRecentActivities] = useState<ActivityLogEntry[]>([]);
+  const prevActivitiesLength = useRef(0);
   
   // Filter activities
   const filteredActivities = recentActivities.filter((entry) => {
     if (filter === 'all') return true;
-    return entry.action.type === filter;
+    return (entry.action as any)?.type === filter;
   });
   
   // Auto-scroll to top when new activities arrive
@@ -274,19 +276,19 @@ export function ActivityFeed() {
         <div className="grid grid-cols-3 gap-2 text-center">
           <div className="bg-gray-50 rounded-lg p-2">
             <div className="text-lg font-bold text-[#e59a3d]">
-              {Array.from(agentStates.values()).filter(s => s.isTraveling).length}
+              {recentActivities.length}
             </div>
-            <div className="text-[10px] text-gray-500">移动中</div>
+            <div className="text-[10px] text-gray-500">活动</div>
           </div>
           <div className="bg-gray-50 rounded-lg p-2">
             <div className="text-lg font-bold text-violet-600">
-              {Array.from(agentStates.values()).filter(s => s.currentAction?.type === 'work').length}
+              0
             </div>
             <div className="text-[10px] text-gray-500">工作中</div>
           </div>
           <div className="bg-gray-50 rounded-lg p-2">
             <div className="text-lg font-bold text-green-600">
-              {Array.from(agentStates.values()).filter(s => s.currentAction?.type === 'social').length}
+              0
             </div>
             <div className="text-[10px] text-gray-500">社交中</div>
           </div>
@@ -307,8 +309,9 @@ export function ActivityFeedCompact() {
       {recentThree.length === 0 ? (
         <p className="text-xs text-gray-400 text-center py-4">暂无活动</p>
       ) : (
-        recentThree.map((entry) => {
-          const config = actionTypeConfig[entry.action.type];
+        recentThree.map((entry: any) => {
+          const actionType = entry.action?.type || 'leisure';
+          const config = actionTypeConfig[actionType as keyof typeof actionTypeConfig] || actionTypeConfig.leisure;
           
           return (
             <motion.div

@@ -184,7 +184,7 @@ export default function AgentDetailClient({ agent }: AgentDetailClientProps) {
 
                 <TabsContent value="activity" className="mt-0">
                   <Card className="p-6 glass">
-                    <ActivityTimeline agentId={agent.id} />
+                    <ActivityTimeline characterId={agent.id} />
                   </Card>
                 </TabsContent>
 

@@ -3,7 +3,7 @@
 import { useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MapPin, Navigation, Footprints } from 'lucide-react';
-import { useSimulation, Journey } from '@/lib/simulation-context';
+import { useSimulation, Journey, ScheduleAction } from '@/lib/simulation-context';
 import { getAgentById } from '@/lib/data';
 
 interface JourneyVisualizationProps {
@@ -29,9 +29,10 @@ function JourneyPath({
   journey: Journey; 
   toPixels: (x: number, y: number) => { x: number; y: number };
 }) {
-  const agent = getAgentById(journey.agentId);
-  const from = toPixels(journey.fromLocation.x, journey.fromLocation.y);
-  const to = toPixels(journey.toLocation.x, journey.toLocation.y);
+  const agentId = journey.agentId || journey.characterId;
+  const agent = agentId ? getAgentById(agentId) : null;
+  const from = toPixels(journey.fromLocation.x || 0, journey.fromLocation.y || 0);
+  const to = toPixels(journey.toLocation.x || 0, journey.toLocation.y || 0);
   
   // Calculate control point for curved path
   const midX = (from.x + to.x) / 2;
@@ -178,8 +179,9 @@ function JourneyLegend() {
         正在移动 ({activeJourneys.length})
       </h4>
       <div className="space-y-1.5 max-h-[150px] overflow-y-auto">
-        {activeJourneys.map((journey) => {
-          const agent = getAgentById(journey.agentId);
+        {activeJourneys.map((journey: any) => {
+          const agentId = journey.agentId || journey.characterId;
+          const agent = agentId ? getAgentById(agentId) : null;
           if (!agent) return null;
           
           const progress = Math.round(journey.progress * 100);
@@ -233,7 +235,7 @@ export function JourneyVisualization({ mapWidth, mapHeight }: JourneyVisualizati
 
 // Journey details panel
 export function JourneyDetailsPanel() {
-  const { activeJourneys, agentStates } = useSimulation();
+  const { activeJourneys } = useSimulation();
   
   if (activeJourneys.length === 0) {
     return (
@@ -246,10 +248,10 @@ export function JourneyDetailsPanel() {
   
   return (
     <div className="space-y-3 max-h-[300px] overflow-y-auto">
-      {activeJourneys.map((journey) => {
-        const agent = getAgentById(journey.agentId);
-        const state = agentStates.get(journey.agentId);
-        if (!agent || !state) return null;
+      {activeJourneys.map((journey: any) => {
+        const agentId = journey.agentId || journey.characterId;
+        const agent = agentId ? getAgentById(agentId) : null;
+        if (!agent) return null;
         
         const progress = Math.round(journey.progress * 100);
         const remaining = 100 - progress;
@@ -296,9 +298,9 @@ export function JourneyDetailsPanel() {
             </div>
             
             {/* Current action */}
-            {state.currentAction && (
+            {journey.progress < 1 && (
               <p className="text-xs text-gray-500 bg-gray-50 rounded-lg p-2">
-                {state.currentAction.description}
+                前往目的地
               </p>
             )}
           </motion.div>
