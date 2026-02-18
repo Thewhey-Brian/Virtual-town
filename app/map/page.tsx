@@ -65,10 +65,18 @@ interface Town {
 }
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN || '';
+const DEFAULT_LAT = 34.1469;
+const DEFAULT_LNG = -118.2551;
+
+function isValidCoord(lat: any, lng: any): boolean {
+  return typeof lat === 'number' && typeof lng === 'number' && 
+    !isNaN(lat) && !isNaN(lng) && 
+    lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
+}
 
 const center = {
-  latitude: 34.1469,
-  longitude: -118.2551,
+  latitude: DEFAULT_LAT,
+  longitude: DEFAULT_LNG,
 };
 
 const placeTypeIcons: Record<string, string> = {
@@ -144,9 +152,13 @@ function MapPageContent() {
       const res = await fetch('/api/places');
       if (res.ok) {
         const response = await res.json();
-        // Handle both old format (array) and new format ({ success, data })
         const placesData = Array.isArray(response) ? response : response.data?.places || response.data || [];
-        setPlaces(placesData);
+        const validatedPlaces = placesData.map((p: any) => ({
+          ...p,
+          lat: isValidCoord(p.lat, p.lng) ? p.lat : DEFAULT_LAT,
+          lng: isValidCoord(p.lat, p.lng) ? p.lng : DEFAULT_LNG,
+        }));
+        setPlaces(validatedPlaces);
       }
     } catch (error) {
       console.error('Failed to fetch places:', error);
@@ -158,9 +170,13 @@ function MapPageContent() {
       const res = await fetch('/api/characters/positions');
       if (res.ok) {
         const response = await res.json();
-        // Handle both old format (array) and new format ({ success, data })
         const charactersData = Array.isArray(response) ? response : response.data?.characters || response.data || [];
-        setCharacters(charactersData);
+        const validatedCharacters = charactersData.map((c: any) => ({
+          ...c,
+          lat: isValidCoord(c.lat, c.lng) ? c.lat : DEFAULT_LAT,
+          lng: isValidCoord(c.lat, c.lng) ? c.lng : DEFAULT_LNG,
+        }));
+        setCharacters(validatedCharacters);
       }
     } catch (error) {
       console.error('Failed to fetch characters:', error);

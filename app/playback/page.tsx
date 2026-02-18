@@ -40,10 +40,18 @@ interface RouteSegment {
 }
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN || '';
+const DEFAULT_LAT = 34.1469;
+const DEFAULT_LNG = -118.2551;
+
+function isValidCoord(lat: any, lng: any): boolean {
+  return typeof lat === 'number' && typeof lng === 'number' && 
+    !isNaN(lat) && !isNaN(lng) && 
+    lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
+}
 
 const center = {
-  latitude: 34.1469,
-  longitude: -118.2551,
+  latitude: DEFAULT_LAT,
+  longitude: DEFAULT_LNG,
 };
 
 const speedOptions = [
@@ -72,8 +80,24 @@ export default function PlaybackPage() {
       const res = await fetch(`/api/playback/positions?date=${selectedDate}&time=${currentTime}`);
       if (res.ok) {
         const data = await res.json();
-        setCharacterPositions(data.positions);
-        setActiveRoutes(data.routes);
+        const validatedPositions = (data.positions || []).map((p: any) => ({
+          ...p,
+          lat: isValidCoord(p.lat, p.lng) ? p.lat : DEFAULT_LAT,
+          lng: isValidCoord(p.lat, p.lng) ? p.lng : DEFAULT_LNG,
+        }));
+        const validatedRoutes = (data.routes || []).map((r: any) => ({
+          ...r,
+          from: {
+            lat: isValidCoord(r.from?.lat, r.from?.lng) ? r.from.lat : DEFAULT_LAT,
+            lng: isValidCoord(r.from?.lat, r.from?.lng) ? r.from.lng : DEFAULT_LNG,
+          },
+          to: {
+            lat: isValidCoord(r.to?.lat, r.to?.lng) ? r.to.lat : DEFAULT_LAT,
+            lng: isValidCoord(r.to?.lat, r.to?.lng) ? r.to.lng : DEFAULT_LNG,
+          },
+        }));
+        setCharacterPositions(validatedPositions);
+        setActiveRoutes(validatedRoutes);
       }
     } catch (error) {
       console.error('Failed to fetch positions:', error);
