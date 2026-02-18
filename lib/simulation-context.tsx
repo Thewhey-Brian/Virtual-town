@@ -5,6 +5,26 @@ export const useSimulation = useTown;
 export const SimulationProvider = TownProvider;
 export { TimeOfDay, WeatherType };
 
+export const getAgentState = (agentId: string) => undefined;
+export const getCurrentTimeString = () => '';
+export const getTimeOfDayLabel = () => '';
+
+export type { TimeOfDay as TimeOfDayType, WeatherType as WeatherTypeType } from './town-context';
+
+export type Agent = {
+  id: string;
+  name: string;
+  avatar: string;
+  age?: number;
+  occupation?: string;
+  bio?: string;
+  currentLocation?: string;
+  homeLocation?: string;
+  workLocation?: string;
+  currentStatus?: string;
+  currentMood?: string;
+};
+
 export interface AgentState {
   agent: any;
   currentAction: any;
@@ -15,7 +35,7 @@ export interface AgentState {
   journeyTo: any;
 }
 
-export interface ScheduleAction {
+export type ScheduleAction = {
   id: string;
   type: string;
   description: string;
@@ -23,9 +43,9 @@ export interface ScheduleAction {
   toLocation?: string;
   time?: string;
   involvedAgents?: string[];
-}
+};
 
-export interface ActivityLogEntry {
+export type ActivityLogEntry = {
   id: string;
   agentId: string;
   agentName: string;
@@ -35,9 +55,9 @@ export interface ActivityLogEntry {
   timestamp: Date;
   locationName: string;
   type: 'start' | 'ongoing' | 'end';
-}
+};
 
-export interface Journey {
+export type Journey = {
   id: string;
   agentId?: string;
   characterId?: string;
@@ -46,4 +66,4 @@ export interface Journey {
   startTime: Date;
   endTime: Date;
   progress: number;
-}
+};

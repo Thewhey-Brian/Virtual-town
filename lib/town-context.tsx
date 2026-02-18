@@ -100,6 +100,9 @@ interface TownContextType {
   setTime: (hours: number, minutes?: number) => void;
   followCharacter: (characterId: string | null) => void;
   getCharacterPosition: (characterId: string, time: Date) => { lat: number; lng: number } | null;
+  getAgentState: (agentId: string) => any;
+  getCurrentTimeString: () => string;
+  getTimeOfDayLabel: () => string;
 }
 
 const TownContext = createContext<TownContextType | undefined>(undefined);
@@ -388,6 +391,12 @@ export function TownProvider({ children }: { children: ReactNode }) {
         setTime,
         followCharacter,
         getCharacterPosition,
+        getAgentState: () => null,
+        getCurrentTimeString: () => currentTime.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false }),
+        getTimeOfDayLabel: () => {
+          const labels: Record<TimeOfDay, string> = { dawn: '黎明', morning: '上午', noon: '中午', afternoon: '下午', evening: '傍晚', night: '夜晚' };
+          return labels[timeOfDay];
+        },
       }}
     >
       {children}
